@@ -7,15 +7,18 @@ import torch.optim as optim
 import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
 
+
 import torchvision
 import torchvision.transforms as transforms
+from tqdm import tqdm
+from tqdm import trange
 
 import os
 import argparse
 
 from models import *
-from utils import progress_bar
 from torch.autograd import Variable
+from torch.optim.lr_scheduler import LambdaLR
 
 
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
@@ -23,9 +26,19 @@ parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
 parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
 args = parser.parse_args()
 
+def schedule(epoch):
+    if (epoch <= 80):
+        return 0.1
+    elif (epoch <= 120):
+        return 0.01
+    else:
+        return 0.001
+
+
 use_cuda = torch.cuda.is_available()
 best_acc = 0  # best test accuracy
 start_epoch = 0  # start from epoch 0 or last checkpoint epoch
+max_epoch = 160
 
 # Data
 print('==> Preparing data..')
@@ -49,6 +62,9 @@ testloader = torch.utils.data.DataLoader(testset, batch_size=100, shuffle=False,
 
 classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
+
+total_batch = len(trainloader)
+total_test_batch = len(testloader)
 # Model
 if args.resume:
     # Load checkpoint.
@@ -61,7 +77,7 @@ if args.resume:
 else:
     print('==> Building model..')
     # net = VGG('VGG19')
-    net = ResNet18()
+    net = ResNet20()
     # net = PreActResNet18()
     # net = GoogLeNet()
     # net = DenseNet121()
@@ -79,6 +95,7 @@ if use_cuda:
 
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
+scheduler = LambdaLR(optimizer, schedule)
 
 # Training
 def train(epoch):
@@ -87,7 +104,12 @@ def train(epoch):
     train_loss = 0
     correct = 0
     total = 0
-    for batch_idx, (inputs, targets) in enumerate(trainloader):
+    t = trange(total_batch)
+    dataiter = iter(trainloader)
+    
+    for batch_idx in t:
+        inputs, targets = dataiter.next()
+        t.set_description('Batch num %i %i' % (batch_idx, total_batch))
         if use_cuda:
             inputs, targets = inputs.cuda(), targets.cuda()
         optimizer.zero_grad()
@@ -101,9 +123,7 @@ def train(epoch):
         _, predicted = torch.max(outputs.data, 1)
         total += targets.size(0)
         correct += predicted.eq(targets.data).cpu().sum()
-
-        progress_bar(batch_idx, len(trainloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
-            % (train_loss/(batch_idx+1), 100.*correct/total, correct, total))
+        t.set_postfix(loss = '%.4f' % (train_loss/(batch_idx+1)), Acc = '%.4f' % (100.*correct/total))
 
 def test(epoch):
     global best_acc
@@ -111,7 +131,11 @@ def test(epoch):
     test_loss = 0
     correct = 0
     total = 0
-    for batch_idx, (inputs, targets) in enumerate(testloader):
+    testiter = iter(testloader)
+    t = trange(total_test_batch)
+    for batch_idx in t:
+        inputs, targets = testiter.next()
+        t.set_description('Batch num %i %i' % (batch_idx, total_batch))
         if use_cuda:
             inputs, targets = inputs.cuda(), targets.cuda()
         inputs, targets = Variable(inputs, volatile=True), Variable(targets)
@@ -123,8 +147,7 @@ def test(epoch):
         total += targets.size(0)
         correct += predicted.eq(targets.data).cpu().sum()
 
-        progress_bar(batch_idx, len(testloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
-            % (test_loss/(batch_idx+1), 100.*correct/total, correct, total))
+        t.set_postfix(loss = '%.4f' % (test_loss/(batch_idx+1)), Acc = '%.4f' % (100.*correct/total))
 
     # Save checkpoint.
     acc = 100.*correct/total
@@ -137,10 +160,22 @@ def test(epoch):
         }
         if not os.path.isdir('checkpoint'):
             os.mkdir('checkpoint')
-        torch.save(state, './checkpoint/ckpt.t7')
+        torch.save(state, './checkpoint/best_ckpt.t7')
         best_acc = acc
+    if epoch == max_epoch:
+        print('Saving..')
+        state = {
+            'net': net.module if use_cuda else net,
+            'acc': acc,
+            'epoch': epoch,
+        }
+        if not os.path.isdir('checkpoint'):
+            os.mkdir('checkpoint')
+        torch.save(state, './checkpoint/last_ckpt%.3f.t7'%acc)
+        print('Best accuracy is %.3f' % best_acc)
 
 
-for epoch in range(start_epoch, start_epoch+100):
+for epoch in range(start_epoch, max_epoch):
+    scheduler.step()
     train(epoch)
     test(epoch)
