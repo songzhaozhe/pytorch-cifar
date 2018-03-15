@@ -7,11 +7,11 @@ import torch.optim as optim
 import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
 
-
 import torchvision
 import torchvision.transforms as transforms
 from tqdm import tqdm
 from tqdm import trange
+from custom_cifar import custom_CIFAR10
 
 import os
 import argparse
@@ -20,16 +20,18 @@ from models import *
 from torch.autograd import Variable
 from torch.optim.lr_scheduler import LambdaLR
 
-
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
 parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
 parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
+parser.add_argument('--model', '-m', help='resume from model file name')
 args = parser.parse_args()
 
+max_epoch = 160
+
 def schedule(epoch):
-    if (epoch <= 80):
+    if (epoch <= 0.5*max_epoch):
         return 0.1
-    elif (epoch <= 120):
+    elif (epoch <= 0.75*max_epoch):
         return 0.01
     else:
         return 0.001
@@ -38,7 +40,7 @@ def schedule(epoch):
 use_cuda = torch.cuda.is_available()
 best_acc = 0  # best test accuracy
 start_epoch = 0  # start from epoch 0 or last checkpoint epoch
-max_epoch = 160
+
 
 # Data
 print('==> Preparing data..')
@@ -55,7 +57,7 @@ transform_test = transforms.Compose([
 ])
 
 trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_train)
-trainloader = torch.utils.data.DataLoader(trainset, batch_size=128, shuffle=True, num_workers=10)
+trainloader = torch.utils.data.DataLoader(trainset, batch_size=128, shuffle=False, num_workers=10)
 
 testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform_test)
 testloader = torch.utils.data.DataLoader(testset, batch_size=100, shuffle=False, num_workers=10)
@@ -70,15 +72,17 @@ if args.resume:
     # Load checkpoint.
     print('==> Resuming from checkpoint..')
     assert os.path.isdir('checkpoint'), 'Error: no checkpoint directory found!'
-    checkpoint = torch.load('./checkpoint/ckpt.t7')
+    checkpoint = torch.load('./checkpoint/'+args.model+'.t7')
     net = checkpoint['net']
     best_acc = checkpoint['acc']
     start_epoch = checkpoint['epoch']
+    max_epoch = max_epoch - start_epoch
+    start_epoch = 0
 else:
     print('==> Building model..')
     # net = VGG('VGG19')
-    #net = ResNet20()
-    net = ResNet110()
+    net = ResNet20()
+    #net = ResNet110()
     # net = PreActResNet18()
     # net = GoogLeNet()
     # net = DenseNet121()
@@ -95,7 +99,7 @@ if use_cuda:
     cudnn.benchmark = True
 
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
+optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4, nesterov=True)
 scheduler = LambdaLR(optimizer, schedule)
 
 # Training
@@ -107,7 +111,7 @@ def train(epoch):
     total = 0
     t = trange(total_batch)
     dataiter = iter(trainloader)
-    
+
     for batch_idx in t:
         inputs, targets = dataiter.next()
         t.set_description('Batch num %i %i' % (batch_idx, total_batch))
