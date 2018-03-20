@@ -18,8 +18,7 @@ import argparse
 
 from models import *
 from torch.autograd import Variable
-from torch.optim.lr_scheduler import LambdaLR, MultiStepLR
-from utils import init_params
+from torch.optim.lr_scheduler import MultiStepLR
 
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
 parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
@@ -27,24 +26,12 @@ parser.add_argument('--resume', '-r', action='store_true', help='resume from che
 parser.add_argument('--model', '-m', help='resume from model file name')
 args = parser.parse_args()
 
-max_epoch = 164
-
-def schedule(epoch):
-    #if (epoch < 500):
-    #    return 0.01
-    if (epoch <= 0.5*max_epoch):
-        return 0.1
-    elif (epoch <= 0.75*max_epoch):
-        return 0.01
-    else:
-        return 0.001
-
+MAX_EPOCH = 164
+MILESTONES = [int(MAX_EPOCH*0.5), int(MAX_EPOCH*0.75)]
 
 use_cuda = torch.cuda.is_available()
 best_acc = 0  # best test accuracy
 start_epoch = 0  # start from epoch 0 or last checkpoint epoch
-
-
 mean = [x/255 for x in [125.3, 123.0, 113.9]]
 
 # Data
@@ -72,7 +59,6 @@ testloader = torch.utils.data.DataLoader(testset, batch_size=100, shuffle=False,
 
 classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
 
-
 total_batch = len(trainloader)
 total_test_batch = len(testloader)
 # Model
@@ -84,7 +70,7 @@ if args.resume:
     net = checkpoint['net']
     best_acc = checkpoint['acc']
     start_epoch = checkpoint['epoch']
-    max_epoch = max_epoch - start_epoch
+    MAX_EPOCH = MAX_EPOCH - start_epoch
     start_epoch = 0
 else:
     print('==> Building model..')
@@ -100,7 +86,6 @@ else:
     # net = DPN92()
     # net = ShuffleNetG2()
     # net = SENet18()
-    #init_params(net)
 
 if use_cuda:
     net.cuda()
@@ -108,8 +93,8 @@ if use_cuda:
 
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4, nesterov=True)
-#scheduler = LambdaLR(optimizer, schedule)
-scheduler = MultiStepLR(optimizer, milestones=[int(max_epoch*0.5), int(max_epoch*0.75)], gamma=0.1)
+scheduler = MultiStepLR(optimizer, milestones=MILESTONES, gamma=0.1)
+
 # Training
 def train(epoch):
     print('\nEpoch: %d' % epoch)
@@ -175,7 +160,7 @@ def test(epoch):
             os.mkdir('checkpoint')
         torch.save(state, './checkpoint/best_ckpt.t7')
         best_acc = acc
-    if epoch == max_epoch:
+    if epoch == MAX_EPOCH:
         print('Saving..')
         state = {
             'net': net.module if use_cuda else net,
@@ -187,14 +172,7 @@ def test(epoch):
         torch.save(state, './checkpoint/last_ckpt%.3f.t7'%acc)
         print('Best accuracy is %.3f' % best_acc)
 
-def adjust_learning_rate(optimizer, epoch):
-  """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
-  lr = schedule(epoch)
-  for param_group in optimizer.param_groups:
-    param_group['lr'] = lr
-
-for epoch in range(start_epoch, max_epoch+1):
-    #adjust_learning_rate(optimizer, epoch)
+for epoch in range(start_epoch, MAX_EPOCH+1):
     scheduler.step()
     train(epoch)
     test(epoch)
