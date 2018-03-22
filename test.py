@@ -24,19 +24,19 @@ parser.add_argument('--model', '-m', default='best_ckpt', help='load model name'
 args = parser.parse_args()
 
 use_cuda = torch.cuda.is_available()
-
+mean = [x/255 for x in [125.3, 123.0, 113.9]]
 # Data
 print('==> Preparing data..')
 transform_train = transforms.Compose([
     transforms.RandomCrop(32, padding=4),
     transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
-    transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+    transforms.Normalize(mean, [1,1,1]),
 ])
 
 transform_test = transforms.Compose([
     transforms.ToTensor(),
-    transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+    transforms.Normalize(mean, [1,1,1]),
 ])
 
 trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_train)

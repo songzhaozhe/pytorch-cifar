@@ -12,7 +12,7 @@ import torchvision
 # import torch.utils.data as data
 # from .utils import download_url, check_integrity
 
-ERASE_LABELS = [9]
+ERASE_LABELS = []
 
 class custom_CIFAR10(torchvision.datasets.CIFAR10):
     def __init__(self, root, train=True,

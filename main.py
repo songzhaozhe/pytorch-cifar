@@ -26,7 +26,7 @@ parser.add_argument('--resume', '-r', action='store_true', help='resume from che
 parser.add_argument('--model', '-m', help='resume from model file name')
 args = parser.parse_args()
 
-MAX_EPOCH = 164
+MAX_EPOCH = 160
 MILESTONES = [int(MAX_EPOCH*0.5), int(MAX_EPOCH*0.75)]
 
 use_cuda = torch.cuda.is_available()
@@ -41,20 +41,17 @@ transform_train = transforms.Compose([
     transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
     transforms.Normalize(mean, [1,1,1]),
-    #transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
 ])
 
 transform_test = transforms.Compose([
     transforms.ToTensor(),
-    transforms.Normalize(mean, [1,1,1]
-        ),
-    #transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+    transforms.Normalize(mean, [1,1,1]),
 ])
 
-trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_train)
+trainset = custom_CIFAR10(root='./data', train=True, download=True, transform=transform_train)
 trainloader = torch.utils.data.DataLoader(trainset, batch_size=128, shuffle=True, num_workers=5, pin_memory=True)
 
-testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform_test)
+testset = custom_CIFAR10(root='./data', train=False, download=True, transform=transform_test)
 testloader = torch.utils.data.DataLoader(testset, batch_size=100, shuffle=False, num_workers=5, pin_memory=True)
 
 classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
@@ -75,8 +72,8 @@ if args.resume:
 else:
     print('==> Building model..')
     # net = VGG('VGG19')
-    #net = ResNet32()
-    net = ResNet20()
+    net = ResNet110()
+    #net = ResNet20()
     # net = PreActResNet18()
     # net = GoogLeNet()
     # net = DenseNet121()
@@ -161,6 +158,7 @@ def test(epoch):
         torch.save(state, './checkpoint/best_ckpt.t7')
         best_acc = acc
     if epoch == MAX_EPOCH:
+        test_with_category()
         print('Saving..')
         state = {
             'net': net.module if use_cuda else net,
@@ -172,6 +170,29 @@ def test(epoch):
         torch.save(state, './checkpoint/last_ckpt%.3f.t7'%acc)
         print('Best accuracy is %.3f' % best_acc)
 
+def test_with_category():
+    net.eval()
+    test_loss = 0
+    correct = 0
+    total = 0
+    #testiter = iter(testloader)
+    class_correct = list(0. for i in range(10))
+    class_total = list(0. for i in range(10))
+    for data in testloader:
+        images, labels = data
+        if use_cuda:
+            images, labels = images.cuda(), labels.cuda()
+        outputs = net(Variable(images))
+        _, predicted = torch.max(outputs.data, 1)
+        c = (predicted == labels).squeeze()
+        for i in range(len(labels)):
+            label = labels[i]
+            class_correct[label] += c[i]
+            class_total[label] += 1
+    acc = list(0. for i in range(10))
+    for i in range(10):
+        acc[i] = 100*class_correct[i]/class_total[i]
+    print(acc)
 for epoch in range(start_epoch, MAX_EPOCH+1):
     scheduler.step()
     train(epoch)

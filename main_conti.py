@@ -18,24 +18,19 @@ import argparse
 
 from models import *
 from torch.autograd import Variable
-from torch.optim.lr_scheduler import LambdaLR
+from torch.optim.lr_scheduler import MultiStepLR
 
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
 parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
-parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
 parser.add_argument('--model', '-m', help='resume from model file name')
 args = parser.parse_args()
+args.resume = True
 
-max_epoch = 180
+MAX_EPOCH = 30
 
-def schedule(epoch):
-    if (epoch <= -0.5*max_epoch):
-        return 0.1
-    elif (epoch <= 0.5*max_epoch):
-        return 0.01
-    else:
-        return 0.001
+MILESTONES = [int(MAX_EPOCH*0.5)]
 
+mean = [x/255 for x in [125.3, 123.0, 113.9]]
 
 use_cuda = torch.cuda.is_available()
 best_acc = 0  # best test accuracy
@@ -48,12 +43,12 @@ transform_train = transforms.Compose([
     transforms.RandomCrop(32, padding=4),
     transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
-    transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+    transforms.Normalize(mean, [1,1,1]),
 ])
 
 transform_test = transforms.Compose([
     transforms.ToTensor(),
-    transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+    transforms.Normalize(mean, [1,1,1]),
 ])
 
 trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_train)
@@ -76,10 +71,10 @@ if args.resume:
     net = checkpoint['net']
     best_acc = checkpoint['acc']
     start_epoch = checkpoint['epoch']
-    max_epoch = max_epoch - start_epoch
     start_epoch = 0
 else:
     print('==> Building model..')
+    print('error!!!!!!')
     # net = VGG('VGG19')
     net = ResNet20()
     #net = ResNet110()
@@ -100,7 +95,7 @@ if use_cuda:
 
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4, nesterov=True)
-scheduler = LambdaLR(optimizer, schedule)
+scheduler = MultiStepLR(optimizer, milestones=MILESTONES, gamma=0.1)
 
 # Training
 def train(epoch):
@@ -143,7 +138,7 @@ def test(epoch):
         t.set_description('Batch num %i %i' % (batch_idx, total_batch))
         if use_cuda:
             inputs, targets = inputs.cuda(), targets.cuda()
-        inputs, targets = Variable(inputs, volatile=True), Variable(targets)
+        inputs, targets = Variable(inputs, volatile=True), Variable(targets, volatile=True)
         outputs = net(inputs)
         loss = criterion(outputs, targets)
 
@@ -167,7 +162,8 @@ def test(epoch):
             os.mkdir('checkpoint')
         torch.save(state, './checkpoint/best_ckpt.t7')
         best_acc = acc
-    if epoch == max_epoch:
+    if epoch == MAX_EPOCH:
+        test_with_category()
         print('Saving..')
         state = {
             'net': net.module if use_cuda else net,
@@ -179,8 +175,31 @@ def test(epoch):
         torch.save(state, './checkpoint/last_ckpt%.3f.t7'%acc)
         print('Best accuracy is %.3f' % best_acc)
 
+def test_with_category():
+    net.eval()
+    test_loss = 0
+    correct = 0
+    total = 0
+    #testiter = iter(testloader)
+    class_correct = list(0. for i in range(10))
+    class_total = list(0. for i in range(10))
+    for data in testloader:
+        images, labels = data
+        if use_cuda:
+            images, labels = images.cuda(), labels.cuda()
+        outputs = net(Variable(images))
+        _, predicted = torch.max(outputs.data, 1)
+        c = (predicted == labels).squeeze()
+        for i in range(len(labels)):
+            label = labels[i]
+            class_correct[label] += c[i]
+            class_total[label] += 1
+    acc = list(0. for i in range(10))
+    for i in range(10):
+        acc[i] = 100*class_correct[i]/class_total[i]
+    print(acc)
 
-for epoch in range(start_epoch, max_epoch+1):
+for epoch in range(start_epoch, MAX_EPOCH+1):
     scheduler.step()
     train(epoch)
     test(epoch)
