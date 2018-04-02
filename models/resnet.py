@@ -90,11 +90,17 @@ class ResNet(nn.Module):
 
 def ResNet20():
     return ResNet(BasicBlock, [3,3,3])
-
 def ResNet32():
     return ResNet(BasicBlock, [5,5,5])
 def ResNet110():
     return ResNet(BasicBlock, [18,18,18])
+
+def ResNet20_100():
+    return ResNet(BasicBlock, [3,3,3], 100)
+def ResNet32_100():
+    return ResNet(BasicBlock, [5,5,5], 100)
+def ResNet110_100():
+    return ResNet(BasicBlock, [18,18,18], 100)
 
 def test():
     net = ResNet20()

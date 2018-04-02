@@ -11,7 +11,8 @@ import torchvision
 import torchvision.transforms as transforms
 from tqdm import tqdm
 from tqdm import trange
-from custom_cifar import custom_CIFAR10
+from custom_cifar_100 import custom_CIFAR100
+from pro_cifar import pro_CIFAR100
 
 import os
 import argparse
@@ -22,11 +23,15 @@ from torch.optim.lr_scheduler import MultiStepLR
 
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
 parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
-parser.add_argument('--model', '-m', help='resume from model file name')
+parser.add_argument('--model', '-m', type=int, help='resume from model file name')
+parser.add_argument('-p', default=0.5, type=float, help='learning rate')
+parser.add_argument('--epoch', default=20, type=int, help='max epoch')
 args = parser.parse_args()
 args.resume = True
-
-MAX_EPOCH = 45
+NEW_LABEL_START = args.model
+PROPORTION = args.p
+MAX_EPOCH = args.epoch
+print(args)
 
 MILESTONES = [int(MAX_EPOCH*0.5), int(MAX_EPOCH*0.75)]
 
@@ -51,23 +56,18 @@ transform_test = transforms.Compose([
     transforms.Normalize(mean, [1,1,1]),
 ])
 
-trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform_train)
-trainloader = torch.utils.data.DataLoader(trainset, batch_size=128, shuffle=True, num_workers=10)
-
-testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform_test)
+testset = torchvision.datasets.CIFAR100(root='./data', train=False, download=True, transform=transform_test)
 testloader = torch.utils.data.DataLoader(testset, batch_size=100, shuffle=False, num_workers=10)
 
 classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
-
-
-total_batch = len(trainloader)
 total_test_batch = len(testloader)
 # Model
 if args.resume:
     # Load checkpoint.
     print('==> Resuming from checkpoint..')
     assert os.path.isdir('checkpoint'), 'Error: no checkpoint directory found!'
-    checkpoint = torch.load('./checkpoint/'+args.model+'.t7')
+
+    checkpoint = torch.load('./checkpoint/'+'100_no'+str(args.model)+'.t7')
     net = checkpoint['net']
     best_acc = checkpoint['acc']
     start_epoch = checkpoint['epoch']
@@ -76,7 +76,7 @@ else:
     print('==> Building model..')
     print('error!!!!!!')
     # net = VGG('VGG19')
-    net = ResNet20()
+    #net = ResNet20()
     #net = ResNet110()
     # net = PreActResNet18()
     # net = GoogLeNet()
@@ -104,6 +104,9 @@ def train(epoch):
     train_loss = 0
     correct = 0
     total = 0
+    trainset = pro_CIFAR100(NEW_LABEL_START=NEW_LABEL_START, proportion=PROPORTION, root='./data', train=True, download=True, transform=transform_train)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size=128, shuffle=True, num_workers=4)
+    total_batch = len(trainloader)
     t = trange(total_batch)
     dataiter = iter(trainloader)
 
@@ -135,7 +138,7 @@ def test(epoch):
     t = trange(total_test_batch)
     for batch_idx in t:
         inputs, targets = testiter.next()
-        t.set_description('Batch num %i %i' % (batch_idx, total_batch))
+        t.set_description('Batch num %i %i' % (batch_idx, total_test_batch))
         if use_cuda:
             inputs, targets = inputs.cuda(), targets.cuda()
         inputs, targets = Variable(inputs, volatile=True), Variable(targets, volatile=True)
@@ -181,8 +184,8 @@ def test_with_category():
     correct = 0
     total = 0
     #testiter = iter(testloader)
-    class_correct = list(0. for i in range(10))
-    class_total = list(0. for i in range(10))
+    class_correct = list(0. for i in range(100))
+    class_total = list(0. for i in range(100))
     for data in testloader:
         images, labels = data
         if use_cuda:
@@ -194,11 +197,11 @@ def test_with_category():
             label = labels[i]
             class_correct[label] += c[i]
             class_total[label] += 1
-    acc = list(0. for i in range(10))
-    for i in range(10):
+    acc = list(0. for i in range(100))
+    for i in range(100):
         acc[i] = 100*class_correct[i]/class_total[i]
     print(acc)
-
+test_with_category()
 for epoch in range(start_epoch, MAX_EPOCH+1):
     scheduler.step()
     train(epoch)
