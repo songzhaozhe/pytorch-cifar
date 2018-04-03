@@ -78,34 +78,33 @@ class pro_CIFAR100(torchvision.datasets.CIFAR100):
             self.train_data = new_train
             self.train_labels = new_labels
         else:
-            f = self.test_list[0][0]
-            file = os.path.join(self.root, self.base_folder, f)
-            fo = open(file, 'rb')
-            if sys.version_info[0] == 2:
-                entry = pickle.load(fo)
-            else:
-                entry = pickle.load(fo, encoding='latin1')
-            self.test_data = entry['data']
-            if 'labels' in entry:
-                self.test_labels = entry['labels']
-            else:
-                self.test_labels = entry['fine_labels']
-            fo.close()
-            self.test_data = self.test_data.reshape((10000, 3, 32, 32))
-            self.test_data = self.test_data.transpose((0, 2, 3, 1))  # convert to HWC
-
-            new_test = np.zeros([10000-len(ERASE_LABELS)*100, 32, 32, 3], dtype=np.uint8) # uint8 is necessary
-            new_labels = []
-            idx = 0
-            for i in range(len(self.test_labels)):
-                if not (self.test_labels[i] in ERASE_LABELS):
-                    new_test[idx] = self.test_data[i]
-                    new_labels.append(self.test_labels[i])
-                    idx += 1
-            self.test_data = new_test
-            self.test_labels = new_labels
+            raise NotImplementedError
     def __len__(self):
         if self.train:
             return self.size
         else:
             return 10000-len(ERASE_LABELS)*100
+
+    def __getitem__(self, index):
+        """
+        Args:
+            index (int): Index
+        Returns:
+            tuple: (image, target) where target is index of the target class.
+        """
+        if self.train:
+            img, target = self.train_data[index], self.train_labels[index]
+        else:
+            img, target = self.test_data[index], self.test_labels[index]
+
+        # doing this so that it is consistent with all other datasets
+        # to return a PIL Image
+        img = Image.fromarray(img)
+
+        if self.transform is not None:
+            img = self.transform(img)
+
+        if self.target_transform is not None:
+            target = self.target_transform(target)
+
+        return img, target

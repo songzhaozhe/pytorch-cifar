@@ -12,7 +12,7 @@ import torchvision
 # import torch.utils.data as data
 # from .utils import download_url, check_integrity
 
-erase_start = 100
+erase_start = 99
 
 ERASE_LABELS = [i for i in range(erase_start, 100)]
 

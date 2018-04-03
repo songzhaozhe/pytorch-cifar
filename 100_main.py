@@ -159,7 +159,6 @@ def test(epoch):
         torch.save(state, './checkpoint/best_ckpt.t7')
         best_acc = acc
     if epoch == MAX_EPOCH:
-        test_with_category()
         print('Saving..')
         state = {
             'net': net.module if use_cuda else net,
@@ -169,6 +168,7 @@ def test(epoch):
         if not os.path.isdir('checkpoint'):
             os.mkdir('checkpoint')
         torch.save(state, './checkpoint/last_ckpt%.3f.t7'%acc)
+        test_with_category()
         print('Best accuracy is %.3f' % best_acc)
 
 def test_with_category():
@@ -192,7 +192,10 @@ def test_with_category():
             class_total[label] += 1
     acc = list(0. for i in range(100))
     for i in range(100):
-        acc[i] = 100*class_correct[i]/class_total[i]
+        if class_total[i] == 0:
+            acc[i] = 0
+        else:
+            acc[i] = 100*class_correct[i]/class_total[i]
     print(acc)
 for epoch in range(start_epoch, MAX_EPOCH+1):
     scheduler.step()

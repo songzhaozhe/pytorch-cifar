@@ -55,9 +55,9 @@ transform_test = transforms.Compose([
     transforms.Normalize(mean, [1,1,1]),
 ])
 
-original_trainset = torchvision.datasets.CIFAR100(root='./data', train=True, download=True, transform=transform_train)
-train_X = original_trainset.train_data
-train_Y = original_trainset.train_labels
+trainset = complex_CIFAR100(root='./data', train=True, download=True, transform=transform_train)
+train_X = trainset.train_data
+train_Y = trainset.train_labels
 prob = [-1 for i in range(train_X.shape[0])]
 
 testset = torchvision.datasets.CIFAR100(root='./data', train=False, download=True, transform=transform_test)
@@ -76,20 +76,7 @@ if args.resume:
     best_acc = 0 #checkpoint['acc']
     start_epoch = 0 #checkpoint['epoch']
 else:
-    print('==> Building model..')
-    print('error!!!!!!')
-    # net = VGG('VGG19')
-    #net = ResNet20()
-    #net = ResNet110()
-    # net = PreActResNet18()
-    # net = GoogLeNet()
-    # net = DenseNet121()
-    # net = ResNeXt29_2x64d()
-    # net = MobileNet()
-    # net = MobileNetV2()
-    # net = DPN92()
-    # net = ShuffleNetG2()
-    # net = SENet18()
+    raise NotImplementedError
 
 if use_cuda:
     net.cuda()
@@ -105,19 +92,19 @@ final_test_acc = 1.
 # Training
 def train(epoch):
     global final_train_acc
+    global prob
     print('\nEpoch: %d' % epoch)
     net.train()
     train_loss = 0
     correct = 0
     total = 0
-    trainset = pro_CIFAR100(NEW_LABEL_START=NEW_LABEL_START, proportion=PROPORTION, root='./data', train=True, download=True, transform=transform_train)
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=128, shuffle=True, num_workers=4)
     total_batch = len(trainloader)
     t = trange(total_batch)
     dataiter = iter(trainloader)
 
     for batch_idx in t:
-        inputs, targets = dataiter.next()
+        inputs, targets, index = dataiter.next()
         t.set_description('Batch num %i %i' % (batch_idx, total_batch))
         if use_cuda:
             inputs, targets = inputs.cuda(), targets.cuda()
@@ -125,10 +112,6 @@ def train(epoch):
         inputs, targets = Variable(inputs), Variable(targets)
         outputs = net(inputs)
         loss = criterion(outputs, targets)
-        print(loss)
-        for i in loss.shape[0]:
-            if (targets[i] >= NEW_LABEL_START):
-                loss *= PROPORTION
         loss.backward()
         optimizer.step()
 
