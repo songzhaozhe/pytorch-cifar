@@ -20,12 +20,15 @@ import argparse
 from models import *
 from torch.autograd import Variable
 from torch.optim.lr_scheduler import MultiStepLR
+from utils import FocalLoss
 
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
 parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
 parser.add_argument('--model', '-m', type=int, help='resume from model file name')
-parser.add_argument('-p', default=0.5, type=float, help='learning rate')
+parser.add_argument('-p', default=0.5, type=float, help='proportion of old examples')
 parser.add_argument('--epoch', default=20, type=int, help='max epoch')
+parser.add_argument('--weighted', '-w', action='store_true', help='use a weighted loss for old examples')
+parser.add_argument('--fl', '-fl', action='store_true', help='use a focal loss')
 args = parser.parse_args()
 args.resume = True
 NEW_LABEL_START = args.model
@@ -56,9 +59,6 @@ transform_test = transforms.Compose([
 ])
 
 original_trainset = torchvision.datasets.CIFAR100(root='./data', train=True, download=True, transform=transform_train)
-train_X = original_trainset.train_data
-train_Y = original_trainset.train_labels
-prob = [-1 for i in range(train_X.shape[0])]
 
 testset = torchvision.datasets.CIFAR100(root='./data', train=False, download=True, transform=transform_test)
 testloader = torch.utils.data.DataLoader(testset, batch_size=100, shuffle=False, num_workers=10)
@@ -96,7 +96,20 @@ if use_cuda:
     net = torch.nn.DataParallel(net, device_ids=range(torch.cuda.device_count()))
     cudnn.benchmark = True
 
-criterion = nn.CrossEntropyLoss()
+weights = [1 for i in range(100)]
+if args.weighted:
+    for i in range(NEW_LABEL_START, 100):
+        weights[i] = PROPORTION
+weights = torch.FloatTensor(weights)
+print(weights[0], weights[99])
+if use_cuda:
+    weights = weights.cuda()
+
+criterion = nn.CrossEntropyLoss(weights)
+if args.fl:
+    criterion = FocalLoss(100)
+    print("####")
+    criterion.cuda()
 optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4, nesterov=True)
 scheduler = MultiStepLR(optimizer, milestones=MILESTONES, gamma=0.1)
 
@@ -125,10 +138,6 @@ def train(epoch):
         inputs, targets = Variable(inputs), Variable(targets)
         outputs = net(inputs)
         loss = criterion(outputs, targets)
-        print(loss)
-        for i in loss.shape[0]:
-            if (targets[i] >= NEW_LABEL_START):
-                loss *= PROPORTION
         loss.backward()
         optimizer.step()
 
