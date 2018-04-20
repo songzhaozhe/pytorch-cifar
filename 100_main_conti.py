@@ -22,30 +22,20 @@ from torch.autograd import Variable
 from torch.optim.lr_scheduler import MultiStepLR
 from utils import FocalLoss
 
-parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
-parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
-parser.add_argument('--model', '-m', type=int, help='resume from model file name')
-parser.add_argument('-p', default=0.5, type=float, help='proportion of old examples')
-parser.add_argument('--epoch', default=20, type=int, help='max epoch')
-parser.add_argument('--weighted', '-w', action='store_true', help='use a weighted loss for old examples')
-parser.add_argument('--fl', '-fl', action='store_true', help='use a focal loss')
-args = parser.parse_args()
-args.resume = True
-NEW_LABEL_START = args.model
-PROPORTION = args.p
-MAX_EPOCH = args.epoch
-print(args)
-
-MILESTONES = [int(MAX_EPOCH*0.5), int(MAX_EPOCH*0.75)]
+def parse_args():
+    parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
+    parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
+    parser.add_argument('--model', '-m', type=int, help='resume from model file name')
+    parser.add_argument('-p', default=0.5, type=float, help='proportion of old examples')
+    parser.add_argument('--epoch', default=20, type=int, help='max epoch')
+    parser.add_argument('--weighted', '-w', action='store_true', help='use a weighted loss for old examples')
+    parser.add_argument('--fl', '-fl', action='store_true', help='use a focal loss')
+    args = parser.parse_args()
+    args.resume = True
+    print(args)
+    return args
 
 mean = [x/255 for x in [125.3, 123.0, 113.9]]
-
-use_cuda = torch.cuda.is_available()
-best_acc = 0  # best test accuracy
-start_epoch = 0  # start from epoch 0 or last checkpoint epoch
-
-# Data
-print('==> Preparing data..')
 transform_train = transforms.Compose([
     transforms.RandomCrop(32, padding=4),
     transforms.RandomHorizontalFlip(),
@@ -57,67 +47,16 @@ transform_test = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize(mean, [1,1,1]),
 ])
-
-original_trainset = torchvision.datasets.CIFAR100(root='./data', train=True, download=True, transform=transform_train)
-
-testset = torchvision.datasets.CIFAR100(root='./data', train=False, download=True, transform=transform_test)
-testloader = torch.utils.data.DataLoader(testset, batch_size=100, shuffle=False, num_workers=10)
-
-classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
-total_test_batch = len(testloader)
-# Model
-if args.resume:
-    # Load checkpoint.
-    print('==> Resuming from checkpoint..')
-    assert os.path.isdir('checkpoint'), 'Error: no checkpoint directory found!'
-
-    checkpoint = torch.load('./checkpoint/'+'100_no'+str(args.model)+'.t7')
-    net = checkpoint['net']
-    best_acc = 0 #checkpoint['acc']
-    start_epoch = 0 #checkpoint['epoch']
-else:
-    print('==> Building model..')
-    print('error!!!!!!')
-    # net = VGG('VGG19')
-    #net = ResNet20()
-    #net = ResNet110()
-    # net = PreActResNet18()
-    # net = GoogLeNet()
-    # net = DenseNet121()
-    # net = ResNeXt29_2x64d()
-    # net = MobileNet()
-    # net = MobileNetV2()
-    # net = DPN92()
-    # net = ShuffleNetG2()
-    # net = SENet18()
-
-if use_cuda:
-    net.cuda()
-    net = torch.nn.DataParallel(net, device_ids=range(torch.cuda.device_count()))
-    cudnn.benchmark = True
-
-weights = [1 for i in range(100)]
-if args.weighted:
-    for i in range(NEW_LABEL_START, 100):
-        weights[i] = PROPORTION
-weights = torch.FloatTensor(weights)
-print(weights[0], weights[99])
-if use_cuda:
-    weights = weights.cuda()
-
-criterion = nn.CrossEntropyLoss(weights)
-if args.fl:
-    criterion = FocalLoss(100)
-    print("####")
-    criterion.cuda()
-optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4, nesterov=True)
-scheduler = MultiStepLR(optimizer, milestones=MILESTONES, gamma=0.1)
+use_cuda = torch.cuda.is_available()
+best_acc = 0  # best test accuracy
 
 final_train_acc = 1.
 final_test_acc = 1.
 # Training
-def train(epoch):
+def train(args, net, epoch, optimizer, criterion):
     global final_train_acc
+    NEW_LABEL_START = args.model
+    PROPORTION = args.p
     print('\nEpoch: %d' % epoch)
     net.train()
     train_loss = 0
@@ -148,7 +87,7 @@ def train(epoch):
         t.set_postfix(loss = '%.4f' % (train_loss/(batch_idx+1)), Acc = '%.4f' % (100.*correct/total))
     final_train_acc = 100.*correct/total
 
-def test(epoch):
+def test(args, net, epoch, testloader, criterion):
     global best_acc
     global final_test_acc
     net.eval()
@@ -156,6 +95,7 @@ def test(epoch):
     correct = 0
     total = 0
     testiter = iter(testloader)
+    total_test_batch = len(testloader)
     t = trange(total_test_batch)
     for batch_idx in t:
         inputs, targets = testiter.next()
@@ -187,8 +127,8 @@ def test(epoch):
             os.mkdir('checkpoint')
         torch.save(state, './checkpoint/best_ckpt.t7')
         best_acc = acc
-    if epoch == MAX_EPOCH:
-        test_with_category()
+    if epoch == args.epoch:
+        test_with_category(args, net, testloader)
         print('Saving..')
         state = {
             'net': net.module if use_cuda else net,
@@ -200,7 +140,7 @@ def test(epoch):
         torch.save(state, './checkpoint/last_ckpt%.3f.t7'%acc)
         print('Best accuracy is %.3f' % best_acc)
 
-def test_with_category():
+def test_with_category(args, net, testloader):
     net.eval()
     test_loss = 0
     correct = 0
@@ -223,10 +163,73 @@ def test_with_category():
     for i in range(100):
         acc[i] = 100*class_correct[i]/class_total[i]
     print(acc)
-test_with_category()
-for epoch in range(start_epoch, MAX_EPOCH+1):
-    scheduler.step()
-    train(epoch)
-    test(epoch)
 
-print(final_train_acc, final_test_acc)
+def main():
+    args = parse_args()
+    MAX_EPOCH = args.epoch
+    # Data
+    print('==> Preparing data..')
+
+    original_trainset = torchvision.datasets.CIFAR100(root='./data', train=True, download=True, transform=transform_train)
+
+    testset = torchvision.datasets.CIFAR100(root='./data', train=False, download=True, transform=transform_test)
+    testloader = torch.utils.data.DataLoader(testset, batch_size=100, shuffle=False, num_workers=10)
+
+    # Model
+    if args.resume:
+        # Load checkpoint.
+        print('==> Resuming from checkpoint..')
+        assert os.path.isdir('checkpoint'), 'Error: no checkpoint directory found!'
+
+        checkpoint = torch.load('./checkpoint/'+'100_no'+str(args.model)+'.t7')
+        net = checkpoint['net']
+        best_acc = 0 #checkpoint['acc']
+        start_epoch = 0 #checkpoint['epoch']
+    else:
+        print('==> Building model..')
+        print('error!!!!!!')
+        # net = VGG('VGG19')
+        #net = ResNet20()
+        #net = ResNet110()
+        # net = PreActResNet18()
+        # net = GoogLeNet()
+        # net = DenseNet121()
+        # net = ResNeXt29_2x64d()
+        # net = MobileNet()
+        # net = MobileNetV2()
+        # net = DPN92()
+        # net = ShuffleNetG2()
+        # net = SENet18()
+
+    if use_cuda:
+        net.cuda()
+        net = torch.nn.DataParallel(net, device_ids=range(torch.cuda.device_count()))
+        cudnn.benchmark = True
+
+    weights = [1 for i in range(100)]
+    if args.weighted:
+        for i in range(NEW_LABEL_START, 100):
+            weights[i] = PROPORTION
+    weights = torch.FloatTensor(weights)
+    print(weights[0], weights[99])
+    if use_cuda:
+        weights = weights.cuda()
+
+    criterion = nn.CrossEntropyLoss(weights)
+    if args.fl:
+        criterion = FocalLoss(100)
+        print("####")
+        criterion.cuda()
+    optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=1e-4, nesterov=True)
+    MILESTONES = [int(MAX_EPOCH*0.5), int(MAX_EPOCH*0.75)]
+    scheduler = MultiStepLR(optimizer, milestones=MILESTONES, gamma=0.1)
+    test_with_category(args, net, testloader)
+    for epoch in range(start_epoch, MAX_EPOCH+1):
+        scheduler.step()
+        train(args=args, net=net, epoch=epoch, optimizer=optimizer, criterion=criterion)
+        test(args, net, epoch, testloader, criterion)
+
+    print(final_train_acc, final_test_acc)
+
+if __name__ == '__main__':
+    main()
