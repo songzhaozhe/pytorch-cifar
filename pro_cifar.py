@@ -20,7 +20,7 @@ ERASE_LABELS = [i for i in range(erase_start, 100)]
 class pro_CIFAR100(torchvision.datasets.CIFAR100):
     def __init__(self, NEW_LABEL_START, proportion, root, train=True,
                  transform=None, target_transform=None,
-                 download=False):
+                 download=False, perm=None, sample_coefficient=3):
         self.root = os.path.expanduser(root)
         self.transform = transform
         self.target_transform = target_transform
@@ -55,7 +55,11 @@ class pro_CIFAR100(torchvision.datasets.CIFAR100):
             self.train_labels = np.asarray(self.train_labels)
             self.train_data = self.train_data.reshape((50000, 3, 32, 32))
             self.train_data = self.train_data.transpose((0, 2, 3, 1))  # convert to HWC
-            perm = np.random.permutation(self.train_data.shape[0])
+            print(perm)
+            #local_shuffle_range = int(NEW_LABEL_START*self.tot*sample_coefficient)
+            #perm[:local_shuffle_range] = np.random.permutation(perm[:local_shuffle_range])
+            if (perm is None):
+                perm = np.random.permutation(self.train_data.shape[0])
             self.train_data = self.train_data[perm]
             self.train_labels = self.train_labels[perm]
 
