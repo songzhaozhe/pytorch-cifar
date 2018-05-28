@@ -10,4 +10,5 @@ from resnet import *
 from resnext import *
 from preact_resnet import *
 from mobilenet import *
+from ShuffleNet import ShuffleNet
 from mobilenetv2 import *

@@ -12,13 +12,13 @@ import torchvision
 # import torch.utils.data as data
 # from .utils import download_url, check_integrity
 
-ERASE_LABELS = []
-
 class custom_CIFAR10(torchvision.datasets.CIFAR10):
     def __init__(self, root, train=True,
                  transform=None, target_transform=None,
-                 download=False):
+                 download=False, erase_start=10):
         self.root = os.path.expanduser(root)
+        self.ERASE_LABELS = [i for i in range(erase_start, 10)]
+        ERASE_LABELS = self.ERASE_LABELS
         self.transform = transform
         self.target_transform = target_transform
         self.train = train  # training set or test set
@@ -91,6 +91,6 @@ class custom_CIFAR10(torchvision.datasets.CIFAR10):
             self.test_labels = new_labels
     def __len__(self):
         if self.train:
-            return 50000-len(ERASE_LABELS)*5000
+            return 50000-len(self.ERASE_LABELS)*5000
         else:
-            return 10000-len(ERASE_LABELS)*1000
+            return 10000-len(self.ERASE_LABELS)*1000
